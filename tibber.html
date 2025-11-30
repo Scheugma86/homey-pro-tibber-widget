@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tibber Preise</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: transparent;
+            padding: 0;
+        }
+        
+        .widget {
+            background: rgba(60, 65, 75, 0.95);
+            border-radius: 16px;
+            padding: 20px;
+            max-width: 480px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .header h2 {
+            color: #ffffff;
+            font-size: 1.2em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .current-price-box {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+        }
+        
+        .current-price {
+            font-size: 2em;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        
+        .price-unit {
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .next-cheap-section {
+            background: rgba(81, 207, 102, 0.2);
+            border: 1px solid rgba(81, 207, 102, 0.3);
+            color: #51cf66;
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .next-cheap-section h3 {
+            font-size: 0.8em;
+            opacity: 0.8;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+        
+        .next-cheap-time {
+            font-size: 1.3em;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: #ffffff;
+        }
+        
+        .next-cheap-price {
+            font-size: 0.95em;
+            opacity: 0.9;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 180px;
+            margin-top: 12px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .error {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            color: #ff6b6b;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #51cf66;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .time-info {
+            font-size: 0.75em;
+            color: rgba(255, 255, 255, 0.4);
+            text-align: right;
+            margin-top: 8px;
+        }
+        
+        .consumption-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .consumption-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .consumption-icon {
+            font-size: 1.3em;
+            flex-shrink: 0;
+        }
+        
+        .consumption-content {
+            flex: 1;
+        }
+        
+        .consumption-label {
+            font-size: 0.75em;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 2px;
+        }
+        
+        .consumption-value {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        
+        .weekend-tips {
+            background: rgba(255, 184, 0, 0.15);
+            border: 1px solid rgba(255, 184, 0, 0.3);
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 15px;
+        }
+        
+        .weekend-tips h3 {
+            font-size: 0.8em;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .tip-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .tip-icon {
+            font-size: 1.3em;
+            flex-shrink: 0;
+        }
+        
+        .tip-text {
+            font-size: 0.85em;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.3;
+        }
+        
+        .tip-text strong {
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget">
+        <div id="loading" class="loading">
+            Lade Tibber Daten...
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="content" style="display: none;">
+            <div class="header">
+                <h2>
+                    <span class="status-indicator"></span>
+                    ⚡ Tibber
+                </h2>
+                <div class="current-price-box">
+                    <span class="current-price" id="currentPrice">--</span>
+                    <span class="price-unit">¢/kWh</span>
+                </div>
+            </div>
+            
+            <div class="consumption-grid">
+                <div class="consumption-box">
+                    <div class="consumption-icon">📅</div>
+                    <div class="consumption-content">
+                        <div class="consumption-label">Heute</div>
+                        <div class="consumption-value" id="costToday">--</div>
+                    </div>
+                </div>
+                <div class="consumption-box">
+                    <div class="consumption-icon">📊</div>
+                    <div class="consumption-content">
+                        <div class="consumption-label">Monat</div>
+                        <div class="consumption-value" id="costMonth">--</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="next-cheap-section">
+                <h3>🕒 Nächste günstige Phase (3h)</h3>
+                <div class="next-cheap-time" id="nextCheapTime">--</div>
+                <div class="next-cheap-price" id="nextCheapPrice">--</div>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="priceChart"></canvas>
+            </div>
+            
+            <div class="time-info" id="lastUpdate"></div>
+        </div>
+    </div>
+
+    <script>
+        const TIBBER_TOKEN = 'HERE THE API TIBBER';
+        
+        let chart = null;
+        
+        async function fetchTibberPrices() {
+            const query = `
+            {
+              viewer {
+                homes {
+                  currentSubscription {
+                    priceInfo {
+                      current {
+                        total
+                        startsAt
+                      }
+                      today {
+                        total
+                        startsAt
+                      }
+                      tomorrow {
+                        total
+                        startsAt
+                      }
+                    }
+                  }
+                  consumption(resolution: HOURLY, last: 24) {
+                    nodes {
+                      from
+                      to
+                      cost
+                      consumption
+                    }
+                  }
+                  consumptionThisMonth: consumption(resolution: MONTHLY, last: 1) {
+                    nodes {
+                      cost
+                      consumption
+                    }
+                  }
+                }
+              }
+            }
+            `;
+            
+            try {
+                const response = await fetch('https://api.tibber.com/v1-beta/gql', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${TIBBER_TOKEN}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API Fehler: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.errors) {
+                    throw new Error(data.errors[0].message);
+                }
+                
+                const homeData = data.data.viewer.homes[0];
+                return {
+                    priceInfo: homeData.currentSubscription.priceInfo,
+                    consumption: homeData.consumption,
+                    consumptionMonth: homeData.consumptionThisMonth
+                };
+            } catch (error) {
+                console.error('Fehler beim Laden der Tibber-Daten:', error);
+                throw error;
+            }
+        }
+        
+        function formatPrice(price) {
+            return (price * 100).toFixed(2);
+        }
+        
+        function formatTime(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        function formatDateTime(dateString) {
+            const date = new Date(dateString);
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            
+            let dayLabel = '';
+            if (date.toDateString() === today.toDateString()) {
+                dayLabel = 'Heute';
+            } else if (date.toDateString() === tomorrow.toDateString()) {
+                dayLabel = 'Morgen';
+            } else {
+                dayLabel = date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+            }
+            
+            return `${dayLabel} ${formatTime(dateString)}`;
+        }
+        
+        function findNextCheapestPeriod(prices, currentTime, hours = 3) {
+            const now = new Date(currentTime);
+            
+            // Nur zukünftige Preise berücksichtigen
+            const futurePrices = prices.filter(p => new Date(p.startsAt) >= now);
+            
+            if (futurePrices.length < hours) {
+                return null;
+            }
+            
+            let cheapestSum = Infinity;
+            let cheapestStart = 0;
+            
+            for (let i = 0; i <= futurePrices.length - hours; i++) {
+                const sum = futurePrices.slice(i, i + hours).reduce((acc, p) => acc + p.total, 0);
+                if (sum < cheapestSum) {
+                    cheapestSum = sum;
+                    cheapestStart = i;
+                }
+            }
+            
+            const endIndex = cheapestStart + hours - 1;
+            const endTime = new Date(futurePrices[endIndex].startsAt);
+            endTime.setHours(endTime.getHours() + 1);
+            
+            return {
+                start: futurePrices[cheapestStart].startsAt,
+                end: endTime.toISOString(),
+                avgPrice: cheapestSum / hours,
+                prices: futurePrices.slice(cheapestStart, cheapestStart + hours)
+            };
+        }
+        
+        function updateDisplay(data) {
+            const priceInfo = data.priceInfo;
+            
+            // Aktueller Preis
+            const currentPrice = formatPrice(priceInfo.current.total);
+            document.getElementById('currentPrice').textContent = currentPrice;
+            
+            // Verbrauchsdaten
+            if (data.consumption && data.consumption.nodes) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                // Kosten heute berechnen
+                const todayCost = data.consumption.nodes
+                    .filter(node => new Date(node.from) >= today)
+                    .reduce((sum, node) => sum + (node.cost || 0), 0);
+                
+                document.getElementById('costToday').textContent = todayCost.toFixed(2) + ' €';
+            } else {
+                document.getElementById('costToday').textContent = 'N/A';
+            }
+            
+            // Kosten Monat
+            if (data.consumptionMonth && data.consumptionMonth.nodes && data.consumptionMonth.nodes.length > 0) {
+                const monthCost = data.consumptionMonth.nodes[0].cost || 0;
+                document.getElementById('costMonth').textContent = monthCost.toFixed(2) + ' €';
+            } else {
+                document.getElementById('costMonth').textContent = 'N/A';
+            }
+            
+            // Alle verfügbaren Preise
+            const allPrices = [...priceInfo.today, ...priceInfo.tomorrow];
+            
+            // Nächste günstige Phase finden
+            const nextCheap = findNextCheapestPeriod(allPrices, priceInfo.current.startsAt, 3);
+            
+            if (nextCheap) {
+                const startFormatted = formatDateTime(nextCheap.start);
+                const endTime = formatTime(nextCheap.end);
+                
+                document.getElementById('nextCheapTime').textContent = 
+                    `${startFormatted} - ${endTime}`;
+                document.getElementById('nextCheapPrice').textContent = 
+                    `⌀ ${formatPrice(nextCheap.avgPrice)} ¢/kWh`;
+            } else {
+                document.getElementById('nextCheapTime').textContent = 'Keine Daten';
+                document.getElementById('nextCheapPrice').textContent = '--';
+            }
+            
+            // Chart erstellen
+            createChart(allPrices, priceInfo.current.startsAt, nextCheap);
+            
+            // Letzte Aktualisierung
+            document.getElementById('lastUpdate').textContent = 
+                `Aktualisiert: ${new Date().toLocaleTimeString('de-DE')}`;
+            
+            // Anzeige einblenden
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+        }
+        
+        function createChart(prices, currentTime, nextCheap) {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            
+            const now = new Date(currentTime);
+            const labels = prices.map(p => {
+                const date = new Date(p.startsAt);
+                const today = new Date();
+                
+                // Nur Uhrzeit anzeigen, außer es ist ein neuer Tag
+                if (date.getDate() !== today.getDate()) {
+                    const dayLabel = date.getDate() === today.getDate() + 1 ? 'Mo' : 
+                                    date.toLocaleDateString('de-DE', { weekday: 'short' });
+                    return `${dayLabel}\n${formatTime(p.startsAt)}`;
+                }
+                return formatTime(p.startsAt);
+            });
+            
+            const data = prices.map(p => formatPrice(p.total));
+            
+            // Farben: aktuell = gelb/orange, günstige Phase = grün, vergangen = grau, zukunft = weiß
+            const nextCheapTimes = nextCheap ? nextCheap.prices.map(p => p.startsAt) : [];
+            
+            const pointColors = prices.map(p => {
+                const pTime = new Date(p.startsAt);
+                if (p.startsAt === currentTime) return 'rgba(255, 184, 0, 1)';
+                if (nextCheapTimes.includes(p.startsAt)) return 'rgba(81, 207, 102, 1)';
+                if (pTime < now) return 'rgba(120, 120, 120, 0.5)';
+                return 'rgba(255, 255, 255, 0.7)';
+            });
+            
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Preis (¢/kWh)',
+                        data: data,
+                        borderColor: 'rgba(255, 255, 255, 0.8)',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: pointColors,
+                        pointBorderColor: pointColors,
+                        pointBorderWidth: 2,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 30, 30, 0.95)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#ffffff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.parsed.y} ¢/kWh`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                callback: function(value) {
+                                    return value + ' ¢';
+                                },
+                                font: {
+                                    size: 10
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.08)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: {
+                                    size: 9
+                                }
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error').textContent = `Fehler: ${message}`;
+        }
+        
+        async function loadData() {
+            try {
+                const data = await fetchTibberPrices();
+                updateDisplay(data);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+        
+        // Initiales Laden
+        loadData();
+        
+        // Aktualisierung alle 5 Minuten
+        setInterval(loadData, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
